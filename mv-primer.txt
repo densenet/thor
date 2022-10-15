@@ -1,0 +1,44 @@
+here is a quick multivector reference:
+1. a multivector in R^n is a vector with 2^n separate components
+2. a multivector is part of what is called a graded algebra.
+   different grades can be thought of as, for example, the difference 
+   between a scalar and a vector - but they can be added together.
+   the sum would be a multivector with two nonzero grade components:
+     A + (B, C, D, ...)
+   A: grade 0 (scalar)
+   B: grade 1 (vector)
+   * A does not distribute as in scalar multiplication.
+3. two vectors are multiplicable as follows: a * b = a dot b + a wedge b
+4. the wedge product, if a and b are vectors:
+  a. intuitively, produces the area of the parallelogram
+     formed in the plane defined by a, b
+  b. has the identity that a wedge a = 0
+  c. is related to the cross product by
+     a cross b = dual (a wedge b)
+  d. brings you to a bi-vector, a grade-2 multivector component
+  e. a product of k vectors is called a k-blade
+5. a pseudoscalar is a multivector with all components zero except
+   the component wedging together all basis vectors (written I)
+  a. it can be intuitively seen as a volume of R^n space
+  b. it operates like a multidimensional pure imaginary number
+  c. there is always only one pseudoscalar component
+  d. it is the "dual" of a scalar, and defines dual in a sense
+6. dual is a unary operation on a multivector M
+  a. dual ( dual M ) = M
+  b. M = (dual M) * I where I is a unit pseudoscalar
+  c. similar to Hodge dual
+  d. M * dual M is a magnitude-like operation
+7. rotations can be identified with multivectors
+  => R<axis v>(angle t) * x = (exp(-v*I * t * 0.5)) * x * (exp(v*I * t * 0.5))
+8. the basis elements of R^n multivectors can be broken down into n+1 sections
+  a. scalar (optional basis symbol, written as "1" or here as "one")
+  b. vector basis (x, y, z, ...)
+  c. bi-vector basis (xy, xz, yz, ...)
+  d. tri-vector / pseudovector basis (xyz, ...)
+  e. pseudoscalar (x^y^z^...)
+
+some important results
+multivectors can cover all of the bases for representation of:
+1. numbers, vectors, lines, planes, volumes, orientations
+2. a natural set of operations (and a canonical vector product) that permits measurement
+3. rigid body transformations, rotations (displacing the need for homogeneous matrices)
