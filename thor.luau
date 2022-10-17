@@ -115,9 +115,6 @@ end
 ]=]
 
 
-local bxor = bit32.bxor
-local abs = math.abs
-
 local thor
 local Thor = {}
 Thor.unary = {}
@@ -247,7 +244,7 @@ local function getComputeKernel(gate)
     local s = (b_bar * b)._
 
     if math.abs(s) < 1e-9 then
-      return Thor.lib.zero
+      return K.lib.zero
     end
 
     return (1 / s) * b_bar * t_bar
@@ -259,7 +256,7 @@ local function getComputeKernel(gate)
   })
 end
 
-thor = getComputeKernel(0x1f)
+thor = getComputeKernel(0b11111)
 
 Thor = {
 	lib = {
