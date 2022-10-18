@@ -74,6 +74,16 @@ local e = (function()
   return ret
 end)()
 
+local bitct = (function()
+  local ret = {}
+
+  for i = 0, 255 do
+    ret[i] = i%2 + (i%4 - i%2)/2  + (i%8 - i%4)/4 + (i%16 - i%8)/8 + (i%32 - i%16)/16 + (i%64 - i%32)/32 + (i%128 - i%64)/64 + (i%256 - i%128)/128
+  end
+
+  return ret
+end)()
+
 local gbit = {1, 2, 4, 8, 16}
 local gbd = {1, 2, 6, 12, 16, 17}
 local gl = {1, 2, 2, 2, 2, 4, 4, 4, 4, 4, 4, 8, 8, 8, 8, 16}
@@ -93,6 +103,25 @@ for i = 1, 16 do
 end
 ]=]
 
+local function get_signature(signature: number, wbasis0: number, wbasis1: number): number
+  local retsign = 1
+
+  local common_basis = bit32.band(wbasis0, wbasis1)
+  for pos = 1, 4 do
+    if b(common_basis, gbit[pos]) then
+      local sigdata = bit32.extract(signature, (pos - 1) * 2, 2)
+      if sigdata == 1 then
+        retsign = -retsign
+      elseif sigdata == 2 then
+        retsign = 0
+        break
+      end
+    end
+  end
+
+  return retsign
+end
+
 export type Code<T> = T
 
 -- generate a geometric product kernel
@@ -110,24 +139,58 @@ local function kgen_geo_prod(gate: number, signature: number): Code<string>
       continue
     end]=]
 
+    -- ith product component
     for i = gbd[_i], gbd[_i + 1] - 1 do
-      -- bw: ith basis word
-      local bw_i = bl[i]
+      -- tg_i: ith basis word
+      local tg_i = bl[i]
       local term_ct = 0
       for _j = 1, #gbd - 1 do
+        -- enforce rhs gate
         if not b(gate, gbit[_j] * GATEOFF) then
           continue
         end
 
+        -- jth term in ith product component
         for j = gbd[_j], gbd[_j + 1] - 1 do
+          -- bw_j: jth basis word (rhs component)
           local bw_j = bl[j]
 
-          local sign = e[x(bw_i, bw_j * 0x10)]
-          local i_swp = bi[x(bw_i, bw_j)]
+          local bw_i = x(tg_i, bw_j)
+          local sign = e[x(tg_i, bw_j * 0x10)]
+          local i_swp = bi[bw_i]
 
+          -- enforce lhs gate
           if not b(gate, gl[i_swp]) then
             continue
           end
+
+          -- enforce signature
+          sign = sign * get_signature(signature, bw_i, bw_j)
+          if sign == 0 then
+            continue
+          end
+          --[=[
+          local bw_co = bit32.band(bw_i, bw_j)
+          local nulled = false
+          for pos = 1, 4 do
+            if b(bw_co, gbit[pos]) then
+              local sigdata = bit32.extract(signature, (pos - 1) * 2, 2)
+              if sigdata == 1 then
+                sign = -sign
+              elseif sigdata == 2 then
+                nulled = true
+                break
+              end
+            end
+          end
+          if nulled then
+            continue
+          end]=]
+          --[=[
+          if i_swp == 2 and j == 2 then
+            print(string.format("%x,%x", bw_i, bw_j))
+          end]=]
+
           term_ct += 1
 
           buf2.T[term_ct] = f("%sa[%d]*b[%d]", if sign == 1 then if term_ct > 1 then "+" else "" else "-", i_swp, j)
