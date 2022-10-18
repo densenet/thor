@@ -74,34 +74,11 @@ local e = (function()
   return ret
 end)()
 
-local bitct = (function()
-  local ret = {}
-
-  for i = 0, 255 do
-    ret[i] = i%2 + (i%4 - i%2)/2  + (i%8 - i%4)/4 + (i%16 - i%8)/8 + (i%32 - i%16)/16 + (i%64 - i%32)/32 + (i%128 - i%64)/64 + (i%256 - i%128)/128
-  end
-
-  return ret
-end)()
-
 local gbit = {1, 2, 4, 8, 16}
 local gbd = {1, 2, 6, 12, 16, 17}
 local gl = {1, 2, 2, 2, 2, 4, 4, 4, 4, 4, 4, 8, 8, 8, 8, 16}
 
 local x = bit32.bxor
-
--- template for multiplication
---[=[
-local i_1
-for i = 1, 16 do
-  i_1 = bl[i]
-  t_prod[i] += t1[i] * t2[1]
-    + e[x(i_1, 0x10)] * (t1[bi[x(i_1, 0x1)]] * t2[2])  + e[x(i_1, 0x20)] * (t1[bi[x(i_1, 0x2)]] * t2[3])  + e[x(i_1, 0x40)] * (t1[bi[x(i_1, 0x4)]] * t2[4])  + e[x(i_1, 0x80)] * (t1[bi[x(i_1, 0x8)]] * t2[5])
-    + e[x(i_1, 0x30)] * (t1[bi[x(i_1, 0x3)]] * t2[6])  + e[x(i_1, 0x50)] * (t1[bi[x(i_1, 0x5)]] * t2[7])  + e[x(i_1, 0x90)] * (t1[bi[x(i_1, 0x9)]] * t2[8])  + e[x(i_1, 0x60)] * (t1[bi[x(i_1, 0x6)]] * t2[9])  + e[x(i_1, 0xA0)] * (t1[bi[x(i_1, 0xA)]] * t2[10]) + e[x(i_1, 0xC0)] * (t1[bi[x(i_1, 0xC)]] * t2[11])
-    + e[x(i_1, 0x70)] * (t1[bi[x(i_1, 0x7)]] * t2[12]) + e[x(i_1, 0xB0)] * (t1[bi[x(i_1, 0xB)]] * t2[13]) + e[x(i_1, 0xD0)] * (t1[bi[x(i_1, 0xD)]] * t2[14]) + e[x(i_1, 0xE0)] * (t1[bi[x(i_1, 0xE)]] * t2[15])
-    + e[x(i_1, 0xF0)] * (t1[bi[x(i_1, 0xF)]] * t2[16])
-end
-]=]
 
 local function get_signature(signature: number, wbasis0: number, wbasis1: number): number
   local retsign = 1
@@ -127,7 +104,9 @@ export type Code<T> = T
 -- generate a geometric product kernel
 local GATEOFF = 0x20
 local f = string.format
-local function kgen_geo_prod(gate: number, signature: number): Code<string>
+local function kgen_geo_prod(_gate: number?, _signature: number?): Code<string>
+  local gate: number = if _gate then _gate else 0x2ff
+  local signature: number = if _signature then _signature else 0
   local buf1 = {}
   local buf2 = {
     T = {},
@@ -215,7 +194,7 @@ end
 --       the 5 lsbs is a left multiplier, and 5 msbs right multiplier.
 --       on-bit refers to nonzero components in the respective grade.
 --       bit position increases with grade dimension, up to the 5th bit.
---       0b0001000010 : kernel to multiply 4D multivectors of grade 1 (pure 4D vectors)
+--       0b00010_00010 : kernel to multiply 4D multivectors of grade 1 (pure 4D vectors)
 -- signature: determines how a given 4D basis vector multiplies against itself wrt geometric product.
 --            two bits per 4D vector basis = 8 bits.
 --            00 => e_n*e_n=1
