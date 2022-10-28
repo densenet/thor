@@ -1,1 +1,0 @@
-type Code<T> = T

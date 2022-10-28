@@ -1,29 +1,10 @@
-local bi = {
-	[0b0000] = 1, -- one
-  [0b0001] = 2, -- w
-	[0b0010] = 3, -- x
-	[0b0100] = 4, -- y
-	[0b1000] = 5, -- z
-  [0b0011] = 6, -- wx
-  [0b0101] = 7, -- wy
-  [0b1001] = 8, -- wz
-	[0b0110] = 9, -- xy
-	[0b1010] = 10, -- xz
-	[0b1100] = 11, -- yz
-  [0b0111] = 12, -- wxy
-  [0b1011] = 13, -- wxz
-  [0b1101] = 14, -- wyz
-  [0b1110] = 15, -- xyz
-	[0b1111] = 16 -- wxyz
-}
+local util = script.Parent.util
 
-local bl = {
-  0b0000, -- scalar component
-  0b0001, 0b0010, 0b0100, 0b1000, --  vector components
-  0b0011, 0b0101, 0b1001, 0b0110, 0b1010, 0b1100, -- bi-vector components
-  0b0111, 0b1011, 0b1101, 0b1110, -- tri-vector / pseudovector components
-  0b1111 -- pseudoscalar component
-}
+local BASIS = require(util.basis)
+local EPS = require(util.eps)
+
+local bi = BASIS.IDX
+local bl = BASIS.LIST
 
 --[=[
 local bt = {
@@ -33,46 +14,7 @@ local bt = {
 
 local b = bit32.btest
 
-local e = (function()
-  local ret = {}
-  for i = 0, 255 do
-    local value = 0
-    if b(i, 0x2) then
-      if b(i, 0x10) then
-        value += 1
-      end
-    end
-    if b(i, 0x4) then
-      if b(i, 0x10) then
-        value += 1
-      end
-      if b(i, 0x20) then
-        value += 1
-      end
-    end
-    if b(i, 0x8) then
-      if b(i, 0x10) then
-        value += 1
-      end
-      if b(i, 0x20) then
-        value += 1
-      end
-      if b(i, 0x40) then
-        value += 1
-      end
-    end
-    if bit32.band(value, 1) == 1 then
-      ret[i] = -1
-    else
-      ret[i] = 1
-    end
-  end
-
-  -- to get index of E with two basis nibbles:
-  -- bxor(lshift(right_basis, 4), left_basis)
-
-  return ret
-end)()
+local e = EPS.MUL
 
 local gbit = {1, 2, 4, 8, 16}
 local gbd = {1, 2, 6, 12, 16, 17}
@@ -105,7 +47,7 @@ export type Code<T> = T
 local GATEOFF = 0x20
 local f = string.format
 local function kgen_geo_prod(_gate: number?, _signature: number?): Code<string>
-  local gate: number = if _gate then _gate else 0x2ff
+  local gate: number = if _gate then _gate else 0x3ff
   local signature: number = if _signature then _signature else 0
   local buf1 = {}
   local buf2 = {
@@ -135,8 +77,8 @@ local function kgen_geo_prod(_gate: number?, _signature: number?): Code<string>
           local bw_j = bl[j]
 
           local bw_i = x(tg_i, bw_j)
-          local sign = e[x(tg_i, bw_j * 0x10)]
           local i_swp = bi[bw_i]
+          local sign = e[x(bw_i, bw_j * 0x10)]
 
           -- enforce lhs gate
           if not b(gate, gl[i_swp]) then
@@ -206,10 +148,23 @@ export type Kernel<T> = {
   __pow: Code<T>,
   __concat: Code<T>
 }
+--print(kgen_geo_prod(0b00001_00001, 0))
 
-print(kgen_geo_prod(0b11111_11111, 0))
+export type Signature = {
+  Unit: number,
+  Anti: number,
+  Null: number,
+}
 
-return function(gate: number, signature: number): Kernel<string>
+local PGA3D = {
+  Unit = 3,
+  Anti = 0,
+  Null = 1
+}
+
+return function(_gate: number?, _signature: Signature?): Kernel<Signature>
+  local gate = if _gate then _gate else 0
+  local signature = if _signature then _signature else PGA3D
   local kernel = {}
 
   kernel.__mul = kgen_geo_prod(gate, signature)
@@ -218,5 +173,5 @@ return function(gate: number, signature: number): Kernel<string>
 
   kernel.__concat = _stub()
 
-  return kernel :: Kernel<string>
+  return kernel
 end

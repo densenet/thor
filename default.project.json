@@ -4,24 +4,21 @@
     "$className": "DataModel",
 
     "ReplicatedStorage": {
-      "Common": {
-        "$path": "src/shared"
-      }
-    },
-
-    "ServerScriptService": {
-      "Server": {
-        "$path": "src/server"
-      }
-    },
-
-    "StarterPlayer": {
-      "StarterPlayerScripts": {
-        "Client": {
-          "$path": "src/client"
+      "Thor": {
+        "$path": "src"
+      },
+      "Test": {
+        "$className": "Folder",
+        "Thor": {
+          "$path": "test"
         }
+      },
+      "DevPackages": {
+        "$path": "DevPackages"
       }
     },
+
+
 
     "Workspace": {
       "$properties": {

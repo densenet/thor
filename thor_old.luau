@@ -1,7 +1,6 @@
 -- polychromatist
 
 -- see mv-primer.txt for information
-
 -- note that two basis elements juxtaposed together is a wedge product between them
 local basis_index = {
 	[0b0000] = 1, -- one
