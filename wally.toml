@@ -1,8 +1,10 @@
 [package]
-name = "mis/thor"
-version = "0.1.0"
+name = "polychromatist/thor"
+version = "0.2.0"
 registry = "https://github.com/UpliftGames/wally-index"
 realm = "shared"
+description = "thor (three+four) - your tool for geometric algebra kernels"
+authors = ["polychromatist"]
 
 [dependencies]
 
