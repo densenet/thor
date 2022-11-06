@@ -26,7 +26,7 @@ type bitcode = { u32 }
 
 local function compile(idxwidth: u32, src: string): bitcode
 		-- 0: exit
-	-- 1: t[.]=a[.]*b[.] (assignmulaccess)
+	-- 1: t[.]= (assign)
 	-- 2: +a[.]*b[.] (plusmulaccess)
 	-- 3: -a[.]*b[.] (submulaccess)
 	
@@ -76,7 +76,7 @@ local function compile(idxwidth: u32, src: string): bitcode
 			until width == 0
 		end
 		
-		local byte	
+		local byte = -1
 		local function parse_index()
 			local num = 0
 			repeat
@@ -93,13 +93,18 @@ local function compile(idxwidth: u32, src: string): bitcode
 		-- instruction loop	
 		while ptr < SIZE_IN do
 			byte = string.byte(src, ptr)
-			if byte == 116 then
+			if byte == 61 then
+				if string.byte(src, ptr + 1) == 45 then
+					byte = 45
+				else
+					byte = 43
+				end
+			end
+			if byte == 10 then
+				ptr += 1
+			elseif byte == 116 then
 				push(2, 1)
 				ptr += 2
-				parse_index()
-				ptr += 4
-				parse_index()
-				ptr += 4
 				parse_index()
 				ptr += 1
 			elseif byte == 43 then
@@ -116,8 +121,6 @@ local function compile(idxwidth: u32, src: string): bitcode
 				ptr += 4
 				parse_index()
 				ptr += 1
-			elseif byte == 10 then
-				ptr += 1
 			else
 				error(string.format("syntax error: %x (%s)", byte, string.char(byte)))
 			end
@@ -132,6 +135,8 @@ local function loadkernel(idxwidth: u32, raw: bitcode): ({ number }, { number },
 	local index0: { u32 } = {}
 	local index1: { u32 } = {}
 	local index2: { u32 } = {}
+	local index3: { u32 } = {}
+	local index4: { u32 } = {}
 	
 	-- load
 	do
@@ -169,20 +174,48 @@ local function loadkernel(idxwidth: u32, raw: bitcode): ({ number }, { number },
 			if ins_depth == 32 then
 				ins_depth = 0
 				ins_ptr += 1
-			end			
+			end
+			
+			local N = #index0
 
 			if ins == 1 then
-				index0[#index0 + 1] = pop_index()
-				index1[#index1 + 1] = pop_index()
-				index2[#index2 + 1] = pop_index()
+				index0[N + 1] = pop_index()
+				index1[N + 1] = -1
+				index2[N + 1] = -1
+				index3[N + 1] = -1
+				index4[N + 1] = -1
 			elseif ins == 2 then
-				index0[#index0 + 1] = 0
-				index1[#index1 + 1] = pop_index()
-				index2[#index2 + 1] = pop_index()
+				if index0[N] == 0 then
+					index0[N] = -2
+					index3[N] = pop_index()
+					index4[N] = pop_index()
+				elseif index0[N] == -1 then
+					index0[N] = -4
+					index3[N] = pop_index()
+					index4[N] = pop_index()
+				else
+					index0[N + 1] = 0
+					index1[N + 1] = pop_index()
+					index2[N + 1] = pop_index()
+					index3[N + 1] = -1
+					index4[N + 1] = -1
+				end
 			elseif ins == 3 then
-				index0[#index0 + 1] = -1
-				index1[#index1 + 1] = pop_index()
-				index2[#index2 + 1] = pop_index()
+				if index0[N] == 0 then
+					index0[N] = -3
+					index3[N] = pop_index()
+					index4[N] = pop_index()
+				elseif index0[N] == -1 then
+					index0[N] = -5
+					index3[N] = pop_index()
+					index4[N] = pop_index()
+				else
+					index0[N + 1] = -1
+					index1[N + 1] = pop_index()
+					index2[N + 1] = pop_index()				
+					index3[N + 1] = -1
+					index4[N + 1] = -1
+				end
 			else
 				break
 			end
@@ -195,19 +228,30 @@ local function loadkernel(idxwidth: u32, raw: bitcode): ({ number }, { number },
 		local t_idx = 0
 		local acc = 0
 		
-		local i0, i1, i2 = 0, 0, 0
+		local i0, i1, i2, i3, i4 = 0, 0, 0, 0, 0
 		
 		for i = 1, DATASIZE do
 			i0, i1, i2 = index0[i], index1[i], index2[i]
 			
-			if i0 == 0 then
-				acc+=a[i1]*b[i2]
+			if i0 == -2 then
+				i3, i4 = index3[i], index4[i]
+				acc=acc+a[i1]*b[i2]+a[i3]*b[i4]
+			elseif i0 == -3 then
+				i3, i4 = index3[i], index4[i]
+				acc=acc+a[i1]*b[i2]-a[i3]*b[i4]
+			elseif i0 == -4 then
+				i3, i4 = index3[i], index4[i]
+				acc=acc-a[i1]*b[i2]+a[i3]*b[i4]
+			elseif i0 == -5 then
+				i3, i4 = index3[i], index4[i]
+				acc=acc-a[i1]*b[i2]-a[i3]*b[i4]
+			elseif i0 == 0 then
+				acc=acc+a[i1]*b[i2]
 			elseif i0 == -1 then
-				acc-=a[i1]*b[i2]
+				acc=acc-a[i1]*b[i2]
 			else
 				t[t_idx] = acc
 				acc, t_idx = 0, i0
-				acc+=a[i1]*b[i2]
 			end
 		end
 		if t_idx then
@@ -215,6 +259,195 @@ local function loadkernel(idxwidth: u32, raw: bitcode): ({ number }, { number },
 		end
 	end
 end
+
+--[===[
+local pga3d_bitcode = compile(4, [[
+t[1]=a[1]*b[1]+a[3]*b[3]+a[4]*b[4]+a[5]*b[5]-a[9]*b[9]-a[10]*b[10]-a[11]*b[11]-a[15]*b[15]
+t[2]=a[2]*b[1]+a[1]*b[2]+a[6]*b[3]+a[7]*b[4]+a[8]*b[5]-a[3]*b[6]-a[4]*b[7]-a[5]*b[8]-a[12]*b[9]-a[13]*b[10]-a[14]*b[11]-a[9]*b[12]-a[10]*b[13]-a[11]*b[14]-a[16]*b[15]+a[15]*b[16]
+t[3]=a[3]*b[1]+a[1]*b[3]+a[9]*b[4]+a[10]*b[5]-a[4]*b[9]-a[5]*b[10]-a[15]*b[11]-a[11]*b[15]
+t[4]=a[4]*b[1]-a[9]*b[3]+a[1]*b[4]+a[11]*b[5]+a[3]*b[9]+a[15]*b[10]-a[5]*b[11]+a[10]*b[15]
+t[5]=a[5]*b[1]-a[10]*b[3]-a[11]*b[4]+a[1]*b[5]-a[15]*b[9]+a[3]*b[10]+a[4]*b[11]-a[9]*b[15]
+t[6]=a[6]*b[1]-a[3]*b[2]+a[2]*b[3]+a[12]*b[4]+a[13]*b[5]+a[1]*b[6]+a[9]*b[7]+a[10]*b[8]-a[7]*b[9]-a[8]*b[10]-a[16]*b[11]+a[4]*b[12]+a[5]*b[13]+a[15]*b[14]-a[14]*b[15]-a[11]*b[16]
+t[7]=a[7]*b[1]-a[4]*b[2]-a[12]*b[3]+a[2]*b[4]+a[14]*b[5]-a[9]*b[6]+a[1]*b[7]+a[11]*b[8]+a[6]*b[9]+a[16]*b[10]-a[8]*b[11]-a[3]*b[12]-a[15]*b[13]+a[5]*b[14]+a[13]*b[15]+a[10]*b[16]
+t[8]=a[8]*b[1]-a[5]*b[2]-a[13]*b[3]-a[14]*b[4]+a[2]*b[5]-a[10]*b[6]-a[11]*b[7]+a[1]*b[8]-a[16]*b[9]+a[6]*b[10]+a[7]*b[11]+a[15]*b[12]-a[3]*b[13]-a[4]*b[14]-a[12]*b[15]-a[9]*b[16]
+t[9]=a[9]*b[1]-a[4]*b[3]+a[3]*b[4]+a[15]*b[5]+a[1]*b[9]+a[11]*b[10]-a[10]*b[11]+a[5]*b[15]
+t[10]=a[10]*b[1]-a[5]*b[3]-a[15]*b[4]+a[3]*b[5]-a[11]*b[9]+a[1]*b[10]+a[9]*b[11]-a[4]*b[15]
+t[11]=a[11]*b[1]+a[15]*b[3]-a[5]*b[4]+a[4]*b[5]+a[10]*b[9]-a[9]*b[10]+a[1]*b[11]+a[3]*b[15]
+t[12]=a[12]*b[1]+a[9]*b[2]-a[7]*b[3]+a[6]*b[4]+a[16]*b[5]+a[4]*b[6]-a[3]*b[7]-a[15]*b[8]+a[2]*b[9]+a[14]*b[10]-a[13]*b[11]+a[1]*b[12]+a[11]*b[13]-a[10]*b[14]+a[8]*b[15]-a[5]*b[16]
+t[13]=a[13]*b[1]+a[10]*b[2]-a[8]*b[3]-a[16]*b[4]+a[6]*b[5]+a[5]*b[6]+a[15]*b[7]-a[3]*b[8]-a[14]*b[9]+a[2]*b[10]+a[12]*b[11]-a[11]*b[12]+a[1]*b[13]+a[9]*b[14]-a[7]*b[15]+a[4]*b[16]
+t[14]=a[14]*b[1]+a[11]*b[2]+a[16]*b[3]-a[8]*b[4]+a[7]*b[5]-a[15]*b[6]+a[5]*b[7]-a[4]*b[8]+a[13]*b[9]-a[12]*b[10]+a[2]*b[11]+a[10]*b[12]-a[9]*b[13]+a[1]*b[14]+a[6]*b[15]-a[3]*b[16]
+t[15]=a[15]*b[1]+a[11]*b[3]-a[10]*b[4]+a[9]*b[5]+a[5]*b[9]-a[4]*b[10]+a[3]*b[11]+a[1]*b[15]
+t[16]=a[16]*b[1]-a[15]*b[2]+a[14]*b[3]-a[13]*b[4]+a[12]*b[5]+a[11]*b[6]-a[10]*b[7]+a[9]*b[8]+a[8]*b[9]-a[7]*b[10]+a[6]*b[11]-a[5]*b[12]+a[4]*b[13]-a[3]*b[14]+a[2]*b[15]+a[1]*b[16]
+]])
+
+for i, v in pga3d_bitcode do
+	pga3d_bitcode[i] = string.format("0x%x", v)
+end
+print(table.concat(pga3d_bitcode, ","))
+
+]===]
+
+--[=[
+0x388a0081,0x6788d123,0x617bbaae,0x68961080,0x8f52d1e3,
+0x9ce2f74d,0xf27b8eb7,0x9febbfda,0x38882028,0xe5383d26,
+0xe37abae,0x4a8c228c,0xa939ea0a,0xa70491e9,0x8ed023ac,
+0x7a3a3a4a,0x8612c165,0x509323b8,0xe1b799a2,0x2b3abf97,
+0xafb7deb1,0xc4f0699f,0x34d8c62b,0x59ea6096,0xcba7e7e8,
+0xecb52cee,0x4c1e77e6,0x63dcb31,0x709ab59d,0xa9a95a3f,
+0xfd3f0bbe,0x8a1f8fa,0x93a3288f,0x2a9e6a80,0x24c26979,
+0xa2b428fb,0x9e3ea290,0x34cba0aa,0xa638990e,0x2eb78aa0,
+0x3589b188,0xd8b5393e,0x39da067e,0x9f2ab0ab,0xb1f4f9ed,
+0xf27c660c,0xe952458f,0x468ddcb6,0xc0aebaba,0x7cee6f62,
+0xbe1a836d,0x5ed1a37c,0xe3273d92,0x3b9a869b,0x2f96d0b2,
+0xcaa0eb9f,0xf8492239,0xf782a2a4,0xcb61ec3e,0x75a92e3c,
+0x6e1e789a,0xeb4e969,0xf0b86d2f,0x0
+
+]=]
+
+local kpga3d = loadkernel(4, { 
+0x388a0081,0x6788d123,0x617bbaae,0x68961080,0x8f52d1e3,
+0x9ce2f74d,0xf27b8eb7,0x9febbfda,0x38882028,0xe5383d26,
+0xe37abae,0x4a8c228c,0xa939ea0a,0xa70491e9,0x8ed023ac,
+0x7a3a3a4a,0x8612c165,0x509323b8,0xe1b799a2,0x2b3abf97,
+0xafb7deb1,0xc4f0699f,0x34d8c62b,0x59ea6096,0xcba7e7e8,
+0xecb52cee,0x4c1e77e6,0x63dcb31,0x709ab59d,0xa9a95a3f,
+0xfd3f0bbe,0x8a1f8fa,0x93a3288f,0x2a9e6a80,0x24c26979,
+0xa2b428fb,0x9e3ea290,0x34cba0aa,0xa638990e,0x2eb78aa0,
+0x3589b188,0xd8b5393e,0x39da067e,0x9f2ab0ab,0xb1f4f9ed,
+0xf27c660c,0xe952458f,0x468ddcb6,0xc0aebaba,0x7cee6f62,
+0xbe1a836d,0x5ed1a37c,0xe3273d92,0x3b9a869b,0x2f96d0b2,
+0xcaa0eb9f,0xf8492239,0xf782a2a4,0xcb61ec3e,0x75a92e3c,
+0x6e1e789a,0xeb4e969,0xf0b86d2f,0x0})
+
+
+local __TIMING = false
+
+if __TIMING then
+	local t = table.create(16, 0)
+	local a = table.create(16, 0)
+	local b = table.create(16, 0)
+
+	a[2],b[7] = 1, -1
+	
+	local stamp = os.clock()
+	
+	for i = 1,1e4 do
+		kpga3d(t, a, b)
+	end
+	
+	print(string.format("--%.3fms", 1e3*(os.clock()-stamp)))
+	
+	for i = 1, 16 do
+		t[i] = string.format("%.2f", t[i])
+	end
+	
+	print("--", table.concat(t, ","))	
+end
+
+
+local kpga3d_l = function(t,a,b)
+t[1]=a[1]*b[1]+a[3]*b[3]+a[4]*b[4]+a[5]*b[5]-a[9]*b[9]-a[10]*b[10]-a[11]*b[11]-a[15]*b[15]
+t[2]=a[2]*b[1]+a[1]*b[2]+a[6]*b[3]+a[7]*b[4]+a[8]*b[5]-a[3]*b[6]-a[4]*b[7]-a[5]*b[8]-a[12]*b[9]-a[13]*b[10]-a[14]*b[11]-a[9]*b[12]-a[10]*b[13]-a[11]*b[14]-a[16]*b[15]+a[15]*b[16]
+t[3]=a[3]*b[1]+a[1]*b[3]+a[9]*b[4]+a[10]*b[5]-a[4]*b[9]-a[5]*b[10]-a[15]*b[11]-a[11]*b[15]
+t[4]=a[4]*b[1]-a[9]*b[3]+a[1]*b[4]+a[11]*b[5]+a[3]*b[9]+a[15]*b[10]-a[5]*b[11]+a[10]*b[15]
+t[5]=a[5]*b[1]-a[10]*b[3]-a[11]*b[4]+a[1]*b[5]-a[15]*b[9]+a[3]*b[10]+a[4]*b[11]-a[9]*b[15]
+t[6]=a[6]*b[1]-a[3]*b[2]+a[2]*b[3]+a[12]*b[4]+a[13]*b[5]+a[1]*b[6]+a[9]*b[7]+a[10]*b[8]-a[7]*b[9]-a[8]*b[10]-a[16]*b[11]+a[4]*b[12]+a[5]*b[13]+a[15]*b[14]-a[14]*b[15]-a[11]*b[16]
+t[7]=a[7]*b[1]-a[4]*b[2]-a[12]*b[3]+a[2]*b[4]+a[14]*b[5]-a[9]*b[6]+a[1]*b[7]+a[11]*b[8]+a[6]*b[9]+a[16]*b[10]-a[8]*b[11]-a[3]*b[12]-a[15]*b[13]+a[5]*b[14]+a[13]*b[15]+a[10]*b[16]
+t[8]=a[8]*b[1]-a[5]*b[2]-a[13]*b[3]-a[14]*b[4]+a[2]*b[5]-a[10]*b[6]-a[11]*b[7]+a[1]*b[8]-a[16]*b[9]+a[6]*b[10]+a[7]*b[11]+a[15]*b[12]-a[3]*b[13]-a[4]*b[14]-a[12]*b[15]-a[9]*b[16]
+t[9]=a[9]*b[1]-a[4]*b[3]+a[3]*b[4]+a[15]*b[5]+a[1]*b[9]+a[11]*b[10]-a[10]*b[11]+a[5]*b[15]
+t[10]=a[10]*b[1]-a[5]*b[3]-a[15]*b[4]+a[3]*b[5]-a[11]*b[9]+a[1]*b[10]+a[9]*b[11]-a[4]*b[15]
+t[11]=a[11]*b[1]+a[15]*b[3]-a[5]*b[4]+a[4]*b[5]+a[10]*b[9]-a[9]*b[10]+a[1]*b[11]+a[3]*b[15]
+t[12]=a[12]*b[1]+a[9]*b[2]-a[7]*b[3]+a[6]*b[4]+a[16]*b[5]+a[4]*b[6]-a[3]*b[7]-a[15]*b[8]+a[2]*b[9]+a[14]*b[10]-a[13]*b[11]+a[1]*b[12]+a[11]*b[13]-a[10]*b[14]+a[8]*b[15]-a[5]*b[16]
+t[13]=a[13]*b[1]+a[10]*b[2]-a[8]*b[3]-a[16]*b[4]+a[6]*b[5]+a[5]*b[6]+a[15]*b[7]-a[3]*b[8]-a[14]*b[9]+a[2]*b[10]+a[12]*b[11]-a[11]*b[12]+a[1]*b[13]+a[9]*b[14]-a[7]*b[15]+a[4]*b[16]
+t[14]=a[14]*b[1]+a[11]*b[2]+a[16]*b[3]-a[8]*b[4]+a[7]*b[5]-a[15]*b[6]+a[5]*b[7]-a[4]*b[8]+a[13]*b[9]-a[12]*b[10]+a[2]*b[11]+a[10]*b[12]-a[9]*b[13]+a[1]*b[14]+a[6]*b[15]-a[3]*b[16]
+t[15]=a[15]*b[1]+a[11]*b[3]-a[10]*b[4]+a[9]*b[5]+a[5]*b[9]-a[4]*b[10]+a[3]*b[11]+a[1]*b[15]
+t[16]=a[16]*b[1]-a[15]*b[2]+a[14]*b[3]-a[13]*b[4]+a[12]*b[5]+a[11]*b[6]-a[10]*b[7]+a[9]*b[8]+a[8]*b[9]-a[7]*b[10]+a[6]*b[11]-a[5]*b[12]+a[4]*b[13]-a[3]*b[14]+a[2]*b[15]+a[1]*b[16]
+end
+
+local __TIMING2 = false
+
+if __TIMING2 then
+	local t = table.create(16, 0)
+	local a = table.create(16, 0)
+	local b = table.create(16, 0)
+	
+	for i = 2, 5 do
+		a[i], b[i] = math.random(), math.random()
+	end
+	
+	local stamp = os.clock()
+	
+	for i = 1,1e5 do
+		kpga3d_l(t, a, b)
+	end
+	
+	print(string.format("--%.3fms", 1e3*(os.clock()-stamp)))
+end
+
+local __TIMING_DENSE = false
+
+if __TIMING_DENSE then
+	local t = table.create(16, 0)
+	local a = table.create(16, 0)
+	local b = table.create(16, 0)
+	
+	for i = 1, 16 do
+		a[i], b[i] = math.random(1000) - 500, math.random(1000) - 500
+	end
+	
+	local stamp = os.clock()
+	
+	for i = 1,1e4 do
+		kpga3d(t, a, b)
+	end
+	
+	print(string.format("--%.3fms", 1e3*(os.clock()-stamp)))
+	
+	for i = 1, 16 do
+		t[i] = string.format("%.2f", t[i])
+	end
+	
+	print("--", table.concat(t, ","))	
+end
+--70.211ms
+--	-135808.00,87782.00,-14215.00,-402370.00,49378.00,-552937.00,-358426.00,-116670.00,348353.00,45518.00,281162.00,-133977.00,292626.00,-187514.00,-42367.00,99606.00
+--19.476ms
+--	32209.00,-232858.00,-110117.00,-37514.00,-124113.00,60730.00,-50116.00,-75588.00,-3269.00,30762.00,-7289.00,-141674.00,45981.00,-131269.00,179623.00,-241535.00
+--19.994ms
+--	-116072.00,28740.00,-288142.00,213946.00,-94096.00,-119934.00,-165988.00,-70148.00,-94336.00,85766.00,-20298.00,-216188.00,-1000.00,14502.00,11704.00,143896.00
+--20.326ms
+--	123069.00,71532.00,-152334.00,-23907.00,125751.00,-4428.00,64244.00,-157992.00,53520.00,201414.00,81927.00,-192440.00,-168912.00,206856.00,51267.00,-111676.00
+--20.323ms
+--	100508.00,34584.00,-60214.00,32828.00,-100210.00,293810.00,263228.00,-110326.00,-87980.00,-304094.00,235882.00,-121410.00,-97880.00,-351530.00,15066.00,-119392.00
+
+local pga3d_regprod_bitcode = compile(4, [[
+t[1]=a[16]*b[1]-a[15]*b[2]+a[14]*b[3]-a[13]*b[4]+a[12]*b[5]+a[11]*b[6]-a[10]*b[7]+a[9]*b[8]+a[8]*b[9]-a[7]*b[10]+a[6]*b[11]-a[5]*b[12]+a[4]*b[13]-a[3]*b[14]+a[2]*b[15]+a[1]*b[16]
+t[2]=-a[16]*b[2]-a[14]*b[6]+a[13]*b[7]-a[12]*b[8]-a[8]*b[12]+a[7]*b[13]-a[6]*b[14]-a[2]*b[16]
+t[3]=-a[16]*b[3]-a[15]*b[6]+a[13]*b[9]-a[12]*b[10]-a[10]*b[12]+a[9]*b[13]-a[6]*b[15]-a[3]*b[16]
+t[4]=-a[16]*b[4]-a[15]*b[7]+a[14]*b[9]-a[12]*b[11]-a[11]*b[12]+a[9]*b[14]-a[7]*b[15]-a[4]*b[16]
+t[5]=-a[16]*b[5]-a[15]*b[8]+a[14]*b[10]-a[13]*b[11]-a[11]*b[13]+a[10]*b[14]-a[8]*b[15]-a[5]*b[16]
+t[6]=a[16]*b[6]-a[13]*b[12]+a[12]*b[13]+a[6]*b[16]
+t[7]=a[16]*b[7]-a[14]*b[12]+a[12]*b[14]+a[7]*b[16]
+t[8]=a[16]*b[8]-a[14]*b[13]+a[13]*b[14]+a[8]*b[16]
+t[9]=a[16]*b[9]-a[15]*b[12]+a[12]*b[15]+a[9]*b[16]
+t[10]=a[16]*b[10]-a[15]*b[13]+a[13]*b[15]+a[10]*b[16]
+t[11]=a[16]*b[11]-a[15]*b[14]+a[14]*b[15]+a[11]*b[16]
+t[12]=-a[16]*b[12]-a[12]*b[16]
+t[13]=-a[16]*b[13]-a[13]*b[16]
+t[14]=-a[16]*b[14]-a[14]*b[16]
+t[15]=-a[16]*b[15]-a[15]*b[16]
+t[16]=a[16]*b[16]
+]])
+
+
+for i, v in pga3d_regprod_bitcode do
+	pga3d_regprod_bitcode[i] = string.format("0x%x", v)
+end
+print(table.concat(pga3d_regprod_bitcode, ","))
+
+--[=[
+
+]=]
 
 --[==[
 local kpga3d = loadkernel(4, { 
@@ -308,8 +541,7 @@ end
 -- we have the grade gate in the case of our GA kernel
 ]==]
 
-
-local __RELEASE = true
+local __RELEASE = false
 if __RELEASE then
 	return {
 		compile = compile,
