@@ -257,6 +257,10 @@ return function(opt, args)
     state.term_buf[state.term_ct] = f("%sa[%d]*b[%d]", if s == 1 then if state.term_ct > 1 then "+" else "" else "-", i, j)
   end
   
+  local function dual(state, tg_i: word)
+    
+  end
+  
   local function prod_finalize(state, tg_i, k_buf)
     local i: idx = WORD2I[tg_i]
       
@@ -264,7 +268,9 @@ return function(opt, args)
     k_buf[#k_buf + 1] = f("t[%d]=%s", i, table.concat(state.term_buf))
   end
   
-  local function _stub() end
+  local function _stub()
+    warn("you kicked a stub")
+  end
   
   local HANDLER_MAP = {
     product = geometric_product,

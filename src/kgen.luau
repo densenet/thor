@@ -199,7 +199,7 @@ local function genkernel(_signature: string): Kernel<string>
     kernel.__mul = kgen(sig, "product") -- GEOMETRIC PRODUCT
     kernel.__pow = kgen(sig, "wedge") -- WEDGE PRODUCT / MEET
     kernel.__concat = kgen(sig, "regressive") -- REGRESSIVE PRODUCT / JOIN
-    kernel.__len = _stub() -- MV DUAL
+    kernel.__len = mgen(sig, "dual") -- MV DUAL
     kernel.__unm = _stub() -- UNARY MINUS
     kernel.__mod = _stub() -- SANDWICH PRODUCT (A % B == B * A * B.r)
   end
