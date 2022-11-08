@@ -257,8 +257,89 @@ return function(opt, args)
     state.term_buf[state.term_ct] = f("%sa[%d]*b[%d]", if s == 1 then if state.term_ct > 1 then "+" else "" else "-", i, j)
   end
   
-  local function dual(state, tg_i: word)
+  local function left_contraction(state, tg_i: word, _bw_j: word)
+    local bw_i, bw_j, i, j = prod_initialize(tg_i, _bw_j)
     
+    if not bw_i then
+      return
+    end
+    
+    local gw_i: grade_word = IDX2GW[i]
+    local gi_i: grade_idx = rz(gw_i)
+    
+    local gw_j: grade_word = IDX2GW[j]
+    local gi_j: grade_idx = rz(gw_j)
+    
+    if gi_j > gi_i then
+      return
+    end
+    
+    local s: sign = get_prod_term_sign(DU, DA, DN, bw_i, bw_j)
+    if s == 0 then
+      return
+    end
+    
+    local cobw = x(bw_i, bw_j)
+    
+    local co: idx = WORD2I[cobw]
+    local gw_co: grade_word = IDX2GW[co]
+    local gi_co: grade_idx = rz(gw_co)
+    
+    if gi_j - gi_i ~= gi_co then
+      return
+    end
+    
+    state.term_ct += 1
+    
+    state.term_buf[state.term_ct] = f("%sa[%d]*b[%d]", if s == 1 then if state.term_ct > 1 then "+" else "" else "-", i, j)
+  end
+  
+  local function dual(state, tg_i: word)
+    local tg_ir = x(BW_IM, tg_i)
+    
+    local s: sign = eps(D, tg_i, tg_ir)
+    
+    local i = WORD2I[tg_i]
+    local ir = WORD2I[tg_ir]
+    
+    state.term_ct += 1
+    
+    state.term_buf[state.term_ct] = f("t[%d]=%st[%d]", i, if s ~= 1 then "-" else "", ir)
+  end
+  
+  local function unary_minus(state, tg_i: word)
+    local i: idx = WORD2I[tg_i]
+    
+    state.term_ct += 1
+    
+    state.term_buf[state.term_ct] = f("t[%d]=-t[%d]", i, i)
+  end
+  
+  local function reversion(state, tg_i: word)
+    local i: idx = WORD2I[tg_i]
+    local gw: grade_word = IDX2GW[i]
+    local gi: grade_idx = rz(gw)
+    
+    state.term_ct += 1
+    state.term_buf[state.term_ct] = f("t[%d]=%st[%d]", i, if gi%4 > 1 then "-" else "", i)
+  end
+  
+  local function involution(state, tg_i: word)
+    local i: idx = WORD2I[tg_i]
+    local gw: grade_word = IDX2GW[i]
+    local gi: grade_idx = rz(gw)
+    
+    state.term_ct += 1
+    state.term_buf[state.term_ct] = f("t[%d]=%st[%d]", i, if gi%2 == 1 then "-" else "", i)
+  end
+  
+  local function conjugate(state, tg_i: word)
+    local i: idx = WORD2I[tg_i]
+    local gw: grade_word = IDX2GW[i]
+    local gi: grade_idx = rz(gw)
+    
+    state.term_ct += 1
+    state.term_buf[state.term_ct] = f("t[%d]=%st[%d]", i, if (gi+1)%4 > 1 then "-" else "", i)
   end
   
   local function prod_finalize(state, tg_i, k_buf)
@@ -275,11 +356,16 @@ return function(opt, args)
   local HANDLER_MAP = {
     product = geometric_product,
     wedge = wedge,
-    regressive = regressive
+    regressive = regressive,
+    left_contraction = left_contraction,
+    dual = dual,
+    unary_minus = unary_minus,
+    reversion = reversion,
+    involution = involution,
+    conjugate = conjugate
   }
   
   function sig:handler(op, state)
-    state.grade = 1
     if HANDLER_MAP[op] then
       return function(...)
         HANDLER_MAP[op](state, ...)

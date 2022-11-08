@@ -104,7 +104,7 @@ local function mgen(sig: Signature, op: string): Code<string>
   local m_buf: { Code<string> } = {}
   state.term_buf = m_buf
   
-  local gen: MutateGenerator = sig:handler(op, state)
+  local gen: MutateGenerator, _ = sig:handler(op, state)
   
   replace(state, sig, gen)
   
@@ -200,8 +200,12 @@ local function genkernel(_signature: string): Kernel<string>
     kernel.__pow = kgen(sig, "wedge") -- WEDGE PRODUCT / MEET
     kernel.__concat = kgen(sig, "regressive") -- REGRESSIVE PRODUCT / JOIN
     kernel.__len = mgen(sig, "dual") -- MV DUAL
-    kernel.__unm = _stub() -- UNARY MINUS
-    kernel.__mod = _stub() -- SANDWICH PRODUCT (A % B == B * A * B.r)
+    kernel.__unm = mgen(sig, "unary_minus") -- UNARY MINUS
+    kernel.lc = kgen(sig, "left_contraction") -- LEFT INNER PRODUCT
+    kernel.__mod = kgen(sig, "sandwich") -- SANDWICH PRODUCT (A % B == B * A * B.r)
+    kernel.rv = mgen(sig, "reversion")
+    kernel.iv = mgen(sig, "involution")
+    kernel.cj = mgen(sig, "conjugate")
   end
 
   return kernel :: Kernel<string>
@@ -209,13 +213,20 @@ end
 
 
 do
-  local k = genkernel ":,,6"
+  local k = genkernel ":3,,1"
   
-  print(k.__mul)
+  print(k.__len)
 end
 
 --[=[
-
+t[1]=t[8]
+t[2]=t[7]
+t[3]=-t[6]
+t[4]=t[5]
+t[5]=t[4]
+t[6]=-t[3]
+t[7]=t[2]
+t[8]=t[1]
 
 ]=]
 
