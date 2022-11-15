@@ -3,10 +3,10 @@ name = "polychromatist/thor"
 version = "0.2.0"
 registry = "https://github.com/UpliftGames/wally-index"
 realm = "shared"
-description = "thor (three+four) - your tool for geometric algebra kernels"
+description = "thor - your tool for geometric algebra kernels"
 authors = ["polychromatist"]
 
 [dependencies]
+mathloader = "polychromatist/mathloader@1.1.0"
 
 [dev-dependencies]
-testez = "roblox/testez@0.4.1"

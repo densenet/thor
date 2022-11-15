@@ -19,7 +19,8 @@ type u32 = number
 type bitcode = { u32 }
 
 local function kcompile(idxwidth: u32, src: string): bitcode
-		-- 0: exit
+	-- 0: if no more data: exit
+	-- 		otherwise: a = table.clone(t)
 	-- 1: t[.]= (assign)
 	-- 2: +a[.]*b[.] (plusmulaccess)
 	-- 3: -a[.]*b[.] (submulaccess)
@@ -102,6 +103,11 @@ local function kcompile(idxwidth: u32, src: string): bitcode
 				ptr += 2
 				parse_index()
 				ptr += 1
+			elseif byte == 97 then
+				push(2, 0)
+				repeat
+					ptr += 1
+				until string.byte(src, ptr) == 10
 			elseif byte == 43 then
 				push(2, 2)
 				ptr += 3
@@ -172,7 +178,16 @@ local function kload(idxwidth: u32, raw: bitcode): ({ number }, { number }, { nu
 			
 			local N = #index0
 
-			if ins == 1 then
+			if ins == 0 then
+				if bit32.extract(raw[ins_ptr], ins_depth, 2) == 0 then
+					break
+				end
+				index0[N + 1] = -10
+				index1[N + 1] = -1
+				index2[N + 1] = -1
+				index3[N + 1] = -1
+				index4[N + 1] = -1
+			elseif ins == 1 then
 				index0[N + 1] = pop_index()
 				index1[N + 1] = -1
 				index2[N + 1] = -1
@@ -211,6 +226,7 @@ local function kload(idxwidth: u32, raw: bitcode): ({ number }, { number }, { nu
 					index4[N + 1] = -1
 				end
 			else
+				print(string.format("possible malformed kernel: unable to load instruction %x at location %d, depth %d", ins, ins_ptr, ins_depth))
 				break
 			end
 		end
@@ -218,7 +234,8 @@ local function kload(idxwidth: u32, raw: bitcode): ({ number }, { number }, { nu
 	
 	-- procedure
 	local DATASIZE = #index0
-	return function(t,a,b)
+	return function(t,a,b,...)
+		local B = {...}
 		local t_idx = 0
 		local acc = 0
 		
@@ -246,6 +263,9 @@ local function kload(idxwidth: u32, raw: bitcode): ({ number }, { number }, { nu
 			else
 				t[t_idx] = acc
 				acc, t_idx = 0, i0
+				if i0 == -10 then
+					a, b = table.clone(t), table.remove(B, 1)
+				end
 			end
 		end
 		if t_idx then
@@ -309,10 +329,10 @@ local function mload(src: string)
 		end
 	end
 	
-	print(table.concat(index0, ","))
-	print(table.concat(index1, ","))
-	print(table.concat(index2, ","))
-	print(table.concat(index3, ","))
+	--print(table.concat(index0, ","))
+	--print(table.concat(index1, ","))
+	--print(table.concat(index2, ","))
+	--print(table.concat(index3, ","))
 	
 	local PROGSIZE = #index0
 	return function(t)
@@ -334,6 +354,43 @@ local function mload(src: string)
 		return _t
 	end
 end
+
+local bitcode = kcompile(4, [[
+t[1]=a[1]*b[1]+a[3]*b[3]+a[4]*b[4]+a[5]*b[5]-a[9]*b[9]-a[10]*b[10]-a[11]*b[11]-a[15]*b[15]
+t[2]=a[2]*b[1]+a[1]*b[2]+a[6]*b[3]+a[7]*b[4]+a[8]*b[5]-a[3]*b[6]-a[4]*b[7]-a[5]*b[8]-a[12]*b[9]-a[13]*b[10]-a[14]*b[11]-a[9]*b[12]-a[10]*b[13]-a[11]*b[14]-a[16]*b[15]+a[15]*b[16]
+t[3]=a[3]*b[1]+a[1]*b[3]+a[9]*b[4]+a[10]*b[5]-a[4]*b[9]-a[5]*b[10]-a[15]*b[11]-a[11]*b[15]
+t[4]=a[4]*b[1]-a[9]*b[3]+a[1]*b[4]+a[11]*b[5]+a[3]*b[9]+a[15]*b[10]-a[5]*b[11]+a[10]*b[15]
+t[5]=a[5]*b[1]-a[10]*b[3]-a[11]*b[4]+a[1]*b[5]-a[15]*b[9]+a[3]*b[10]+a[4]*b[11]-a[9]*b[15]
+t[6]=a[6]*b[1]-a[3]*b[2]+a[2]*b[3]+a[12]*b[4]+a[13]*b[5]+a[1]*b[6]+a[9]*b[7]+a[10]*b[8]-a[7]*b[9]-a[8]*b[10]-a[16]*b[11]+a[4]*b[12]+a[5]*b[13]+a[15]*b[14]-a[14]*b[15]-a[11]*b[16]
+t[7]=a[7]*b[1]-a[4]*b[2]-a[12]*b[3]+a[2]*b[4]+a[14]*b[5]-a[9]*b[6]+a[1]*b[7]+a[11]*b[8]+a[6]*b[9]+a[16]*b[10]-a[8]*b[11]-a[3]*b[12]-a[15]*b[13]+a[5]*b[14]+a[13]*b[15]+a[10]*b[16]
+t[8]=a[8]*b[1]-a[5]*b[2]-a[13]*b[3]-a[14]*b[4]+a[2]*b[5]-a[10]*b[6]-a[11]*b[7]+a[1]*b[8]-a[16]*b[9]+a[6]*b[10]+a[7]*b[11]+a[15]*b[12]-a[3]*b[13]-a[4]*b[14]-a[12]*b[15]-a[9]*b[16]
+t[9]=a[9]*b[1]-a[4]*b[3]+a[3]*b[4]+a[15]*b[5]+a[1]*b[9]+a[11]*b[10]-a[10]*b[11]+a[5]*b[15]
+t[10]=a[10]*b[1]-a[5]*b[3]-a[15]*b[4]+a[3]*b[5]-a[11]*b[9]+a[1]*b[10]+a[9]*b[11]-a[4]*b[15]
+t[11]=a[11]*b[1]+a[15]*b[3]-a[5]*b[4]+a[4]*b[5]+a[10]*b[9]-a[9]*b[10]+a[1]*b[11]+a[3]*b[15]
+t[12]=a[12]*b[1]+a[9]*b[2]-a[7]*b[3]+a[6]*b[4]+a[16]*b[5]+a[4]*b[6]-a[3]*b[7]-a[15]*b[8]+a[2]*b[9]+a[14]*b[10]-a[13]*b[11]+a[1]*b[12]+a[11]*b[13]-a[10]*b[14]+a[8]*b[15]-a[5]*b[16]
+t[13]=a[13]*b[1]+a[10]*b[2]-a[8]*b[3]-a[16]*b[4]+a[6]*b[5]+a[5]*b[6]+a[15]*b[7]-a[3]*b[8]-a[14]*b[9]+a[2]*b[10]+a[12]*b[11]-a[11]*b[12]+a[1]*b[13]+a[9]*b[14]-a[7]*b[15]+a[4]*b[16]
+t[14]=a[14]*b[1]+a[11]*b[2]+a[16]*b[3]-a[8]*b[4]+a[7]*b[5]-a[15]*b[6]+a[5]*b[7]-a[4]*b[8]+a[13]*b[9]-a[12]*b[10]+a[2]*b[11]+a[10]*b[12]-a[9]*b[13]+a[1]*b[14]+a[6]*b[15]-a[3]*b[16]
+t[15]=a[15]*b[1]+a[11]*b[3]-a[10]*b[4]+a[9]*b[5]+a[5]*b[9]-a[4]*b[10]+a[3]*b[11]+a[1]*b[15]
+t[16]=a[16]*b[1]-a[15]*b[2]+a[14]*b[3]-a[13]*b[4]+a[12]*b[5]+a[11]*b[6]-a[10]*b[7]+a[9]*b[8]+a[8]*b[9]-a[7]*b[10]+a[6]*b[11]-a[5]*b[12]+a[4]*b[13]-a[3]*b[14]+a[2]*b[15]+a[1]*b[16]
+]])
+
+local test = kload(4, bitcode)
+
+local a, b = table.create(16, 0), table.create(16, 0)
+a[2], b[3] = math.random(), math.random()
+local t = table.create(16, 0)
+t[4] = 1
+local stamp = os.clock()
+for i = 1, 2e4 do
+	test(t,a,b)
+end
+print(string.format("%.2f", 1e3*(os.clock()-stamp)))
+
+--[=[
+
+]=]
+
+
 --[===[
 
 local pga3d_dual = mload[[

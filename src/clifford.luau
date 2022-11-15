@@ -145,6 +145,44 @@ local function get_prod_term_sign(DU: dim, DA: dim, DN: dim, bw_i: word, bw_j: w
   return retsign :: sign
 end
 
+local function parse_gate(D: dim, args: string, dir: string)
+  local gate: grade_word = n(l(-1, D+1))
+  
+  local invert = false
+  
+  if string.byte(args, 1) == 33 then
+    args=args:sub(2)
+    invert = true
+  end
+  
+  local gb = string.split(args, ",")
+  
+  local argct = 0
+  for i, v in gb do
+    argct += 1
+    if i > D+1 then
+      error(string.format("supplied too many " .. dir .. " gate arguments. dim=%d; argn=%d", D, argct))
+    end
+    v = tonumber(v)
+    if v == nil then
+      error(string.format("cannot interpret a non-numeric " .. dir .. " gate argument: %s (argpos=%d)", gb[i], i))
+    end
+    if v < 0 or v > D then
+      error(string.format("cannot interpret a " .. dir .. " gate argument that is out of bounds: %d is not in range [0,dim=%d] (argpos=%d)", v, D, i))
+    end
+    if v % 1 ~= 0 then
+      error(string.format("cannot interpret a " .. dir .. " gate argument that is not an integer: %.3f (argpos=%d)", v, i))
+    end
+    gate = x(gate, l(1, v))
+  end
+  
+  if invert then
+    gate = x(n(l(-1, D+1)), gate)
+  end
+  
+  return gate
+end
+
 local f = string.format
 return function(opt, args)
   local DU, DA, DN = table.unpack(string.split(opt, ","))
@@ -160,15 +198,14 @@ return function(opt, args)
   
   local D = DU+DA+DN
   
-  local gate = 0
+  local lgate, rgate = 0, 0
   
-  if args.gate then
-    local gb = string.split(args.gate, ",")
-    
-    for i, v in gb do
-      v = tonumber(v)
-      gate = x(gate, l(1, v - 1))
-    end
+  if args.lgate then
+    lgate = x(lgate, parse_gate(D, args.lgate, "left"))
+  end
+  
+  if args.rgate then
+    rgate = x(rgate, parse_gate(D, args.rgate, "right"))
   end
   
   local sig = {
@@ -179,18 +216,33 @@ return function(opt, args)
   
   local WORD2I, IDX2GW = SIGMAP.WORD_TO_IDX, SIGMAP.IDX_TO_GRADE_WORD
   
-  local function prod_initialize(bw_i, bw_j)
+  local function prod_initialize(bw_i: word, bw_j: word, force: boolean?): any
     local j: idx = WORD2I[bw_j]
   
     bw_i = x(bw_i, bw_j) :: word
+    
     local i_swp: idx = WORD2I[bw_i]
-    local i_gw: grade_word = IDX2GW[i_swp]
+    if not force then
+      local i_gw: grade_word = IDX2GW[i_swp]
+    
+      local j_gw: grade_word = IDX2GW[j]
 
-    if b(gate, i_gw) then
-      return -- case: gate says left multiplicand's current grade should be all zero
+      if b(lgate, i_gw) or b(rgate, j_gw) then
+        return -- case: gate says left multiplicand's current grade should be all zero
+      end
     end
     
     return bw_i, bw_j, i_swp, j
+  end
+  
+  local function _stub(): ()
+    warn("you kicked a stub")
+  end
+  
+  local function push_term(state, s: sign, i: idx, j: idx): ()
+    state.term_ct += 1
+    
+    state.term_buf[state.term_ct] = f("%sa[%d]*b[%d]", if s == 1 then if state.term_ct > 1 then "+" else "" else "-", i, j)
   end
   
   local function geometric_product(state, _bw_i: word, _bw_j: word)
@@ -205,9 +257,7 @@ return function(opt, args)
       return
     end
     
-    state.term_ct += 1
-       
-    state.term_buf[state.term_ct] = f("%sa[%d]*b[%d]", if s == 1 then if state.term_ct > 1 then "+" else "" else "-", i, j)   
+    push_term(state, s, i, j)
   end
   
   local function wedge(state, _bw_i: word, _bw_j: word)
@@ -222,9 +272,7 @@ return function(opt, args)
       return
     end
     
-    state.term_ct += 1
-    
-    state.term_buf[state.term_ct] = f("%sa[%d]*b[%d]", if s == 1 then if state.term_ct > 1 then "+" else "" else "-", i, j)
+    push_term(state, s, i, j)
   end
   
   local BW_IM = n(l(-1, D))
@@ -233,7 +281,7 @@ return function(opt, args)
      
     local s_tg, s_j = eps(D, tg_ir, tg_i), eps(D, _bw_j, bw_jr)
 
-    local bw_ir = prod_initialize(tg_ir, bw_jr)
+    local bw_ir = prod_initialize(tg_ir, bw_jr, true)
     
     local bw_i = x(BW_IM, bw_ir)
     
@@ -252,9 +300,13 @@ return function(opt, args)
     
     local i, j = WORD2I[bw_i], WORD2I[_bw_j]
     
-    state.term_ct += 1
+    local gw_i: grade_word, gw_j: grade_word = IDX2GW[i], IDX2GW[j]
     
-    state.term_buf[state.term_ct] = f("%sa[%d]*b[%d]", if s == 1 then if state.term_ct > 1 then "+" else "" else "-", i, j)
+    if b(lgate, gw_i) or b(rgate, gw_j) then
+      return
+    end
+    
+    push_term(state, s, i, j)
   end
   
   local function left_contraction(state, tg_i: word, _bw_j: word)
@@ -270,7 +322,7 @@ return function(opt, args)
     local gw_j: grade_word = IDX2GW[j]
     local gi_j: grade_idx = rz(gw_j)
     
-    if gi_j > gi_i then
+    if gi_j < gi_i then
       return
     end
     
@@ -289,9 +341,93 @@ return function(opt, args)
       return
     end
     
-    state.term_ct += 1
+    push_term(state, s, i, j)
+  end
+  
+  local function scalar_product(state, tg_i: word, _bw_j: word)
+    if tg_i ~= 0 then
+      return
+    end
     
-    state.term_buf[state.term_ct] = f("%sa[%d]*b[%d]", if s == 1 then if state.term_ct > 1 then "+" else "" else "-", i, j)
+    local bw_i, bw_j, i, j = prod_initialize(tg_i, _bw_j)
+    
+    if not bw_i then
+      return
+    end
+    
+    local s: sign = get_prod_term_sign(DU, DA, DN, bw_i, bw_j)
+    if s == 0 then
+      return
+    end
+    
+    push_term(state, s, i, j)
+  end
+  
+  -- this is sometimes called the inner product
+  local function fat_dot(state, tg_i: word, _bw_j: word)
+    local bw_i, bw_j, i, j = prod_initialize(tg_i, _bw_j)
+    
+    if not bw_i then
+      return
+    end
+    
+    local gw_i: grade_word = IDX2GW[i]
+    local gi_i: grade_idx = rz(gw_i)
+    
+    local gw_j: grade_word = IDX2GW[j]
+    local gi_j: grade_idx = rz(gw_j)
+    
+    local s: sign = get_prod_term_sign(DU, DA, DN, bw_i, bw_j)
+    if s == 0 then
+      return
+    end
+    
+    local cobw = x(bw_i, bw_j)
+    
+    local co: idx = WORD2I[cobw]
+    local gw_co: grade_word = IDX2GW[co]
+    local gi_co: grade_idx = rz(gw_co)
+    
+    if math.abs(gi_j - gi_i) ~= gi_co then
+      return
+    end
+    
+    push_term(state, s, i, j)
+  end
+  
+  local function inner_product(state, tg_i: word, _bw_j: word)
+    local bw_i, bw_j, i, j = prod_initialize(tg_i, _bw_j)
+    
+    if not bw_i then
+      return
+    end
+    
+    if bw_i == 0 or bw_j == 0 then
+      return
+    end
+    
+    local gw_i: grade_word = IDX2GW[i]
+    local gi_i: grade_idx = rz(gw_i)
+    
+    local gw_j: grade_word = IDX2GW[j]
+    local gi_j: grade_idx = rz(gw_j)
+    
+    local s: sign = get_prod_term_sign(DU, DA, DN, bw_i, bw_j)
+    if s == 0 then
+      return
+    end
+    
+    local cobw = x(bw_i, bw_j)
+    
+    local co: idx = WORD2I[cobw]
+    local gw_co: grade_word = IDX2GW[co]
+    local gi_co: grade_idx = rz(gw_co)
+    
+    if math.abs(gi_j - gi_i) ~= gi_co then
+      return
+    end
+    
+    push_term(state, s, i, j)
   end
   
   local function dual(state, tg_i: word)
@@ -302,6 +438,10 @@ return function(opt, args)
     local i = WORD2I[tg_i]
     local ir = WORD2I[tg_ir]
     
+    if b(lgate, IDX2GW[ir]) then
+      return
+    end
+    
     state.term_ct += 1
     
     state.term_buf[state.term_ct] = f("t[%d]=%st[%d]", i, if s ~= 1 then "-" else "", ir)
@@ -309,6 +449,9 @@ return function(opt, args)
   
   local function unary_minus(state, tg_i: word)
     local i: idx = WORD2I[tg_i]
+    if b(lgate, IDX2GW[i]) then
+      return
+    end
     
     state.term_ct += 1
     
@@ -318,6 +461,9 @@ return function(opt, args)
   local function reversion(state, tg_i: word)
     local i: idx = WORD2I[tg_i]
     local gw: grade_word = IDX2GW[i]
+    if b(lgate, gw) then
+      return
+    end
     local gi: grade_idx = rz(gw)
     
     state.term_ct += 1
@@ -327,6 +473,9 @@ return function(opt, args)
   local function involution(state, tg_i: word)
     local i: idx = WORD2I[tg_i]
     local gw: grade_word = IDX2GW[i]
+    if b(lgate, gw) then
+      return
+    end
     local gi: grade_idx = rz(gw)
     
     state.term_ct += 1
@@ -336,6 +485,9 @@ return function(opt, args)
   local function conjugate(state, tg_i: word)
     local i: idx = WORD2I[tg_i]
     local gw: grade_word = IDX2GW[i]
+    if b(lgate, gw) then
+      return
+    end
     local gi: grade_idx = rz(gw)
     
     state.term_ct += 1
@@ -349,20 +501,19 @@ return function(opt, args)
     k_buf[#k_buf + 1] = f("t[%d]=%s", i, table.concat(state.term_buf))
   end
   
-  local function _stub()
-    warn("you kicked a stub")
-  end
-  
   local HANDLER_MAP = {
     product = geometric_product,
     wedge = wedge,
     regressive = regressive,
     left_contraction = left_contraction,
+    scalar_product = scalar_product,
+    fat_dot = fat_dot,
+    inner_product = inner_product,
     dual = dual,
     unary_minus = unary_minus,
     reversion = reversion,
     involution = involution,
-    conjugate = conjugate
+    conjugate = conjugate,
   }
   
   function sig:handler(op, state)
@@ -376,6 +527,7 @@ return function(opt, args)
     return _stub
   end
   
+  --[=[
   function sig.inc_word(state, bw)
     bw = inc_word(bw, D)
     
@@ -385,7 +537,7 @@ return function(opt, args)
     if rz(n(bw)) == rz(gw) then
       while true do
         gw = l(gw, 1)
-        if not b(gate, gw) then
+        if not b(rgate, gw) then
           return bw
         end
         bw = n(l(n(bw), 1))
@@ -394,7 +546,8 @@ return function(opt, args)
       return bw
     end
     return 0
-  end
+  end]=]
+  sig.inc_word = function(_, bw) return inc_word(bw, D) end
   
   return sig
 end
