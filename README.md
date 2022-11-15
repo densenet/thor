@@ -1,7 +1,9 @@
-# thor: three and four combined
-with this tool, you can build a series of symbolic equations in the world of 4D Geometric Algebra and feed them into an execution pipeline.
-then, you can generate an independent execution kernel which models it.
+# thor: three and four combined!
 
-## configuration
-using grade masks, the number of ring operations can be reduced.
-WIP
+This tool allows you to dynamically generate (and run) geometric algebras.
+
+The main module facilitating this is `src\kgen.luau`.
+
+You can see some sample kernels in `src\common`.
+
+thor itself will be available in the future.
