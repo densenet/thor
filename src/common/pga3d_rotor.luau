@@ -1,3 +1,7 @@
+
+-- pga3d_rotor := kgen "3,,1;lgate&rgate=0,2,4"
+-- contains natural log, which reverses exp from pga3d_bivector
+
 return {
 	__mul = function(t,a,b)
 t[1]=a[1]*b[1]-a[9]*b[9]-a[10]*b[10]-a[11]*b[11]
@@ -62,5 +66,23 @@ t[8]=-a[16]*b[9]-a[9]*b[16]
 	end,
 	sp = function(t,a,b)
 t[1]=a[1]*b[1]-a[9]*b[9]-a[10]*b[10]-a[11]*b[11]
+	end,
+	log = function(t,u)
+		-- result is a bivector
+		if not u then
+			u = table.create(16, 0)
+		end
+		
+		if t[1] == 0 then
+			table.move(t, 6, 8, 6, u)
+		else
+			local ALPHA, B12, B13, B23, BETA = t[1], t[9], t[10], t[11], t[16]
+			local a = 1/(1-ALPHA*ALPHA)
+			local b = math.acos(ALPHA)*math.sqrt(a)
+			local c = a*BETA*(1-ALPHA*b)
+			u[6],u[7],u[8],u[9],u[10],u[11]=c*B23+b*t[6],c*B13+b*t[7],c*B12+b*t[8],b*B12,b*B13,b*B23
+		end
+		
+		return u
 	end
 }
