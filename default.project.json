@@ -13,8 +13,8 @@
           "$path": "test"
         }
       },
-      "DevPackages": {
-        "$path": "DevPackages"
+      "Packages": {
+        "$path": "Packages"
       }
     },
 

@@ -548,6 +548,7 @@ return function(opt, args)
     return 0
   end]=]
   sig.inc_word = function(_, bw) return inc_word(bw, D) end
+  sig.special = {}
   
   return sig
 end
