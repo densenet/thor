@@ -6,4 +6,6 @@ The main module facilitating this is `src\kgen.luau`.
 
 You can see some sample kernels in `src\common`.
 
-thor itself will be available in the future.
+# future work
+
+`thor` must expose a sandbox for toying directly with common kernels as well as generating your own.
